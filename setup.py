@@ -23,10 +23,11 @@ setup(
         'fastapi',
         'loguru',
         'pydantic[dotenv]',
-        'fastapi_plugins',
-
         'loguru-logging-intercept',
-        'uvicorn-loguru-integration'
+        'uvicorn-loguru-integration',
+
+        'fastapi_plugins',
+        'aioredis'
     ],
     entry_points={
         'console_scripts': [

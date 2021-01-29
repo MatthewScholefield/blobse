@@ -5,8 +5,9 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi_plugins import redis_plugin, depends_redis
 from loguru import logger
 from pydantic import UUID4
-from starlette.requests import Request
-from starlette.responses import Response
+from pydantic.main import BaseModel
+from fastapi.requests import Request
+from fastapi.responses import Response
 
 from blobse.config import config
 
@@ -14,6 +15,7 @@ app = FastAPI(
     title='Blobse',
     description='Simple small blob store over HTTP'
 )
+not_found_exception = HTTPException(status_code=404, detail='Blob not found')
 
 
 @app.on_event("startup")
@@ -32,21 +34,23 @@ async def on_shutdown() -> None:
     await redis_plugin.terminate()
 
 
-@app.post('/new')
+class BlobInfo(BaseModel):
+    resource: str
+
+
+@app.post('/new', response_model=BlobInfo)
 async def new_blob(request: Request, redis: Redis = Depends(depends_redis)):
     blob = await request.body()
     uuid = str(uuid4())
     await redis.set(f'blob:{uuid}', blob)  # ensure at least one char
-    return {
-        'resource': f'{config.server_url}/blob/{uuid}'
-    }
+    return BlobInfo(resource=f'{config.server_url}/blob/{uuid}')
 
 
 @app.get('/blob/{uuid}')
 async def get_blob_route(uuid: UUID4, redis: Redis = Depends(depends_redis)):
     blob = await redis.get(f'blob:{uuid}')
     if blob is None:
-        raise HTTPException(status_code=404, detail='Blob not found')
+        raise not_found_exception
     return Response(content=blob)
 
 
@@ -57,7 +61,7 @@ async def put_blob_route(
 ):
     count = await redis.exists(f'blob:{uuid}')
     if count != 1:
-        raise HTTPException(status_code=404, detail='Blob not found')
+        raise not_found_exception
     await redis.set(f'blob:{uuid}', await request.body())
     return Response(content="")
 
@@ -66,5 +70,5 @@ async def put_blob_route(
 async def delete_blob(uuid: UUID4, redis: Redis = Depends(depends_redis)):
     count = await redis.delete(f'blob:{uuid}')
     if count != 1:
-        raise HTTPException(status_code=404, detail='Blob not found')
+        raise not_found_exception
     return Response(content="")
