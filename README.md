@@ -10,7 +10,7 @@ command line tools that need temporary storage.
 
 ```bash
 # Create new blob
-$ curl -X POST http://localhost:7330/new -d myData
+$ curl -X POST http://blobse.us.to/new -d myData
 {"resource":"http://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931"}
 
 # Get blob
