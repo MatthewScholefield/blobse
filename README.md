@@ -10,21 +10,21 @@ command line tools that need temporary storage.
 
 ```bash
 # Create new blob
-$ curl -X POST http://blobse.us.to/new -d myData
-{"resource":"http://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931"}
+$ curl -X POST https://blobse.us.to/new -d myData
+{"resource":"https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931"}
 
 # Get blob
-$ curl -X GET http://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
+$ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 myData
 
 # Modify blob
-$ curl -X PUT http://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -d myNewData
-$ curl -X GET http://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
+$ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -d myNewData
+$ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 myNewData
 
 # Delete blob
-$ curl -X DELETE http://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
-$ curl -X GET http://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -D -
+$ curl -X DELETE https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
+$ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -D -
 HTTP/1.1 404 Not Found
 {"detail":"Blob not found"}
 ```
