@@ -8,21 +8,21 @@ command line tools that need temporary storage.
 
 ## API
 
-```bash
-# Create new blob
+```console
+$ # Create new blob
 $ curl -X POST https://blobse.us.to/new -d myData
 {"resource":"https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931"}
 
-# Get blob
+$ # Get blob
 $ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 myData
 
-# Modify blob
+$ # Modify blob
 $ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -d myNewData
 $ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 myNewData
 
-# Delete blob
+$ # Delete blob
 $ curl -X DELETE https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 $ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -D -
 HTTP/1.1 404 Not Found
