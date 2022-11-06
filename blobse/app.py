@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from aioredis import Redis
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi_plugins import redis_plugin, depends_redis
 from loguru import logger
 from pydantic import UUID4
@@ -14,6 +15,13 @@ from blobse.config import config
 app = FastAPI(
     title='Blobse',
     description='Simple small blob store over HTTP'
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
 not_found_exception = HTTPException(status_code=404, detail='Blob not found')
 
