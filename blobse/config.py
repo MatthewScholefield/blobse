@@ -12,6 +12,7 @@ class Settings(RedisSettings):
     server_url: str  # ie. https://foo.com
     redis_host: str = "0.0.0.0"
     redis_port: int = 6379
+    redis_decode_responses: bool = False
 
     @validator('server_url', pre=True, always=True)
     def normalize_server_url(cls, v):
