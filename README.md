@@ -1,10 +1,10 @@
 # Blobse
 
-*Simple small blob store over HTTP*
+_Simple small blob store over HTTP_
 
 This is a simple server with an API to store arbitrary data blobs API operating
-anonymously over HTTP. This is useful for use in small client side applications and
-command line tools that need temporary storage.
+anonymously over HTTP. This is useful for use in small client-side applications and
+command-line tools that need temporary storage.
 
 ## API
 
@@ -29,10 +29,37 @@ HTTP/1.1 404 Not Found
 {"detail":"Blob not found"}
 ```
 
+## Locking Workflow
+
+The API provides a safe locking mechanism for modifying blobs to prevent race conditions.  
+Once a blob is locked, it **cannot be modified or deleted** unless using the lock key.
+
+```console
+$ # Lock a blob and retrieve its contents
+$ curl -X POST https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/lock -D -
+HTTP/1.1 200 OK
+X-Lock-Key: 550e8400-e29b-41d4-a716-446655440000
+
+myData
+
+$ # Modify the locked blob using the lock key
+$ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/locked-content \
+    -H "X-Lock-Key: 550e8400-e29b-41d4-a716-446655440000" -d myUpdatedData
+
+$ # Trying to modify a locked blob without a lock key fails
+$ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -d unauthorizedData -D -
+HTTP/1.1 423 Locked
+{"detail":"Blob is locked"}
+
+$ # Delete the lock manually if needed
+$ curl -X DELETE https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/lock
+```
+
+Locks expire automatically **after 30 seconds** if not used.
+
 ## Setup
 
-First, install `redis-server` and have it running on the default port
-(6379).
+First, install `redis-server` and have it running on the default port (6379).
 
 Then, you can install this as a standard Python package or run:
 
@@ -44,7 +71,7 @@ This installs the `blobse` executable into a new `.venv/` virtual environment.
 
 ### Configuring Environment
 
-After running `setup.sh`, you might want to edit `.env` to set a custom server url.
+After running `setup.sh`, you might want to edit `.env` to set a custom server URL.
 
 ## Running
 
@@ -60,9 +87,9 @@ Now, to run the backend, use the `blobse` executable:
 blobse run
 ```
 
-# Production
+## Production
 
-You can set up production related aspects using `nginx`. Here is a conservative site
+You can set up production-related aspects using `nginx`. Here is a conservative site
 config used for [blobse.us.to](https://blobse.us.to):
 
 ```nginx
