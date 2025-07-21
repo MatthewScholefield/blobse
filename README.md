@@ -10,8 +10,8 @@ command-line tools that need temporary storage.
 
 ```console
 $ # Create new blob
-$ curl -X POST https://blobse.us.to/new -d myData
-{"resource":"https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931"}
+$ curl -X POST https://blobse.us.to/blib/new -d myData
+https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 
 $ # Get blob
 $ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
