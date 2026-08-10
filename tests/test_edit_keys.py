@@ -34,8 +34,16 @@ class FakeRedis:
         if script == app.CREATE_SCRIPT:
             self.values[keys[0]] = args[0]
             self.values[keys[1]] = args[1]
+            self.values[keys[2]] = args[2]
             return True
 
+        if script == app.APPEND_SCRIPT:
+            if keys[0] not in self.values:
+                return -1
+            if self.values.get(keys[1]) != args[0]:
+                return -2
+            self.values[keys[0]] += args[1]
+            return 1
         blob_exists = keys[1] in self.values
         edit_key = self.values.get(keys[2])
         provided_edit_key = args[-1]
@@ -92,6 +100,7 @@ class FakeRedis:
                 return 0
             del self.values[keys[1]]
             del self.values[keys[2]]
+            self.values.pop(keys[3], None)
             return 1
 
         raise AssertionError("unexpected Redis script")
@@ -101,8 +110,8 @@ def run(coroutine):
     return asyncio.run(coroutine)
 
 
-def create(redis, body=b"original", edit_key=None):
-    response = run(app.new_blob(Request(body), redis, edit_key))
+def create(redis, body=b"original", edit_key=None, mode=None):
+    response = run(app.new_blob(Request(body), redis, edit_key, mode))
     uuid = UUID(response.body.decode().rsplit("/", 1)[1])
     return uuid, response
 
@@ -112,6 +121,28 @@ def assert_forbidden(coroutine):
         run(coroutine)
     assert error.value.status_code == 403
     assert error.value.detail == "Invalid edit key"
+
+
+def test_append_only_blobs_frame_items_and_keep_owner_control():
+    redis = FakeRedis()
+    response = run(app.new_blob(Request(b"first\nitem"), redis, None, app.APPEND_ONLY_MODE))
+    uuid = UUID(response.body.decode().rsplit("/", 1)[1])
+    edit_key = response.headers["x-edit-key"]
+
+    run(app.append_blob(Request(b"second\x00item"), uuid, redis))
+    assert redis.values[f"blob:{uuid}"] == app.frame_append(b"first\nitem") + app.frame_append(b"second\x00item")
+
+    run(app.put_blob(uuid, Request(b"owner replacement"), redis, edit_key))
+    assert redis.values[f"blob:{uuid}"] == b"owner replacement"
+
+
+def test_append_only_endpoint_rejects_regular_blobs():
+    redis = FakeRedis()
+    uuid, _ = create(redis)
+
+    with pytest.raises(app.HTTPException) as error:
+        run(app.append_blob(Request(b"not allowed"), uuid, redis))
+    assert error.value.status_code == 409
 
 
 def test_create_persists_generated_or_public_edit_key():

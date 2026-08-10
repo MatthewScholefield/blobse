@@ -41,9 +41,28 @@ HTTP/1.1 404 Not Found
 $ # Opt out of private edits when creating a blob
 $ curl -X POST https://blobse.us.to/blob/new -H "X-Edit-Key: public" -d publicData
 https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
+$ # Create an append-only blob. The response includes the private owner key.
+$ curl -X POST https://blobse.us.to/blob/new \
+    -H "X-Blob-Mode: append-only" -d first-item -D -
+HTTP/1.1 200 OK
+X-Blob-Mode: append-only
+X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000
+
+https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
+
+$ # Anyone can append an arbitrary byte string without an edit key
+$ curl -X POST https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/append \
+    -d 'item containing newlines, separators, or binary data'
+
+$ # The GET response is a sequence of 8-byte big-endian length-prefixed items.
+$ # The owner can still replace the blob with PUT or delete it with DELETE.
 ```
 
-## Locking Workflow
+Append-only blobs use length prefixes rather than a delimiter, so no escaping is
+needed and every byte value is safe. Anonymous callers can only use `/append`;
+all existing edit, lock, replace, and delete routes still require the owner's
+`X-Edit-Key`.
+
 
 The API provides a safe locking mechanism for modifying blobs to prevent race conditions.  
 Once a blob is locked, it **cannot be modified or deleted** unless using the lock key.

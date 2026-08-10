@@ -23,16 +23,30 @@ app.add_middleware(
 
 LOCK_TIMEOUT = 30
 PUBLIC_EDIT_KEY = "public"
+APPEND_ONLY_MODE = "append-only"
 
 not_found_exception = HTTPException(status_code=404, detail="Blob not found")
 locked_exception = HTTPException(status_code=423, detail="Blob is locked")
 invalid_lock_exception = HTTPException(status_code=403, detail="Invalid or expired lock key")
 invalid_edit_key_exception = HTTPException(status_code=403, detail="Invalid edit key")
+invalid_blob_mode_exception = HTTPException(status_code=409, detail="Blob does not support anonymous appends")
 
 CREATE_SCRIPT = """
 redis.call('SET', KEYS[1], ARGV[1])
 redis.call('SET', KEYS[2], ARGV[2])
+redis.call('SET', KEYS[3], ARGV[3])
 return true
+"""
+
+APPEND_SCRIPT = """
+if redis.call('EXISTS', KEYS[1]) == 0 then
+    return -1
+end
+if redis.call('GET', KEYS[2]) ~= ARGV[1] then
+    return -2
+end
+redis.call('APPEND', KEYS[1], ARGV[2])
+return 1
 """
 
 LOCK_SCRIPT = """
@@ -113,6 +127,7 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
 end
 redis.call('DEL', KEYS[2])
 redis.call('DEL', KEYS[3])
+redis.call('DEL', KEYS[4])
 return 1
 """
 
@@ -120,6 +135,13 @@ return 1
 def edit_key_name(uuid: UUID4) -> str:
     return f"edit-key:{uuid}"
 
+
+def blob_mode_name(uuid: UUID4) -> str:
+    return f"blob-mode:{uuid}"
+
+
+def frame_append(value: bytes) -> bytes:
+    return len(value).to_bytes(8, "big") + value
 
 def raise_for_edit_result(result) -> None:
     if result == -1:
@@ -205,20 +227,46 @@ async def new_blob(
     request: Request,
     redis: Redis = Depends(depends_redis),
     x_edit_key: str = Header(None),
+    x_blob_mode: str = Header(None),
 ):
     blob = await request.body()
     uuid = str(uuid4())
-    edit_key = PUBLIC_EDIT_KEY if x_edit_key == PUBLIC_EDIT_KEY else str(uuid4())
+    mode = x_blob_mode or "regular"
+    if mode not in ("regular", APPEND_ONLY_MODE):
+        raise HTTPException(status_code=400, detail="Invalid blob mode")
+    edit_key = PUBLIC_EDIT_KEY if x_edit_key == PUBLIC_EDIT_KEY and mode != APPEND_ONLY_MODE else str(uuid4())
+    if mode == APPEND_ONLY_MODE:
+        blob = frame_append(blob) if blob else b""
     await redis.eval(
         CREATE_SCRIPT,
-        keys=[f"blob:{uuid}", f"edit-key:{uuid}"],
-        args=[blob, edit_key]
+        keys=[f"blob:{uuid}", f"edit-key:{uuid}", blob_mode_name(uuid)],
+        args=[blob, edit_key, mode]
     )
 
     response = Response(content=f"{config.server_url}/blob/{uuid}")
     if edit_key != PUBLIC_EDIT_KEY:
         response.headers["X-Edit-Key"] = edit_key
+    response.headers["X-Blob-Mode"] = mode
     return response
+
+
+@app.post("/blob/{uuid}/append")
+async def append_blob(
+    request: Request,
+    uuid: UUID4,
+    redis: Redis = Depends(depends_redis),
+):
+    item = await request.body()
+    result = await redis.eval(
+        APPEND_SCRIPT,
+        keys=[f"blob:{uuid}", blob_mode_name(uuid)],
+        args=[APPEND_ONLY_MODE, frame_append(item)]
+    )
+    if result == -1:
+        raise not_found_exception
+    if result == -2:
+        raise invalid_blob_mode_exception
+    return Response(content=b"")
 
 
 @app.get("/blob/{uuid}")
@@ -256,7 +304,7 @@ async def delete_blob(
 ):
     result = await redis.eval(
         DELETE_SCRIPT,
-        keys=[f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid)],
+        keys=[f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid), blob_mode_name(uuid)],
         args=[x_edit_key]
     )
     raise_for_edit_result(result)
