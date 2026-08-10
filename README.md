@@ -8,51 +8,71 @@ command-line tools that need temporary storage.
 
 ## API
 
+By default, newly created blobs are private: anyone with the blob URL can read
+one, but its edit key is required to modify or delete it. Capture the
+`X-Edit-Key` response header when creating a blob. Keep edit keys in headers,
+not URLs, and share them only over a secure channel.
+
 ```console
-$ # Create new blob
-$ curl -X POST https://blobse.us.to/blib/new -d myData
+$ # Create a private blob and capture its edit key
+$ curl -X POST https://blobse.us.to/blob/new -d myData -D -
+HTTP/1.1 200 OK
+X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000
+
 https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 
-$ # Get blob
+$ # Read a blob (public)
 $ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 myData
 
-$ # Modify blob
-$ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -d myNewData
+$ # Modify a private blob using its edit key
+$ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 \
+    -H "X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000" -d myNewData
 $ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 myNewData
 
-$ # Delete blob
-$ curl -X DELETE https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
+$ # Delete a private blob using its edit key
+$ curl -X DELETE https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 \
+    -H "X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000"
 $ curl -X GET https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -D -
 HTTP/1.1 404 Not Found
 {"detail":"Blob not found"}
+
+$ # Opt out of private edits when creating a blob
+$ curl -X POST https://blobse.us.to/blob/new -H "X-Edit-Key: public" -d publicData
+https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 ```
 
 ## Locking Workflow
 
 The API provides a safe locking mechanism for modifying blobs to prevent race conditions.  
 Once a blob is locked, it **cannot be modified or deleted** unless using the lock key.
+Private blobs require their edit key for every locking operation; locked updates
+require both the edit key and lock key.
 
 ```console
-$ # Lock a blob and retrieve its contents
-$ curl -X POST https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/lock -D -
+$ # Lock a private blob and retrieve its contents
+$ curl -X POST https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/lock \
+    -H "X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000" -D -
 HTTP/1.1 200 OK
-X-Lock-Key: 550e8400-e29b-41d4-a716-446655440000
+X-Lock-Key: 123e4567-e89b-12d3-a456-426614174000
 
 myData
 
-$ # Modify the locked blob using the lock key
+$ # Modify the locked blob using both keys
 $ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/locked-content \
-    -H "X-Lock-Key: 550e8400-e29b-41d4-a716-446655440000" -d myUpdatedData
+    -H "X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000" \
+    -H "X-Lock-Key: 123e4567-e89b-12d3-a456-426614174000" -d myUpdatedData
 
 $ # Trying to modify a locked blob without a lock key fails
-$ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -d unauthorizedData -D -
+$ curl -X PUT https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 \
+    -H "X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000" -d unauthorizedData -D -
 HTTP/1.1 423 Locked
 {"detail":"Blob is locked"}
 
-$ # Delete the lock manually if needed
-$ curl -X DELETE https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/lock
+$ # Delete the lock manually using the edit key
+$ curl -X DELETE https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/lock \
+    -H "X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000"
 ```
 
 Locks expire automatically **after 30 seconds** if not used.
