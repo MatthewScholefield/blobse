@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 
+import logging
 import uvicorn
 from uvicorn_loguru_integration import run_uvicorn_loguru
 
@@ -21,7 +22,7 @@ def main():
                 "blobse.app:app",
                 host="0.0.0.0",
                 port=args.port,
-                log_level=["info", "debug"][config.debug],
+                log_level=[logging.INFO, logging.DEBUG][config.debug],
                 reload=config.debug,
             )
         )

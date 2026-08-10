@@ -1,5 +1,6 @@
 from uuid import uuid4
 import time
+from typing import List
 
 from redis.asyncio import Redis
 from fastapi import FastAPI, Depends, HTTPException, Header
@@ -148,6 +149,10 @@ def raise_for_edit_result(result) -> None:
         raise not_found_exception
     if result == -2:
         raise invalid_edit_key_exception
+
+
+async def run_script(script, redis: Redis, keys: List[str], args: List[str]) -> int | bytes | None:
+    return await redis.eval(script, len(keys), *keys, *args)
 
 
 @app.on_event("startup")
