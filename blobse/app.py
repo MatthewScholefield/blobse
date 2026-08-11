@@ -1,7 +1,7 @@
 from uuid import uuid4
 import time
 
-from aioredis import Redis
+from redis.asyncio import Redis
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_plugins import redis_plugin, depends_redis
@@ -169,11 +169,7 @@ async def lock_blob(
 ):
     lock_key = str(uuid4())
     expiration_time = int(time.time()) + LOCK_TIMEOUT
-    result = await redis.eval(
-        LOCK_SCRIPT,
-        keys=[f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid)],
-        args=[str(LOCK_TIMEOUT), f"{lock_key}:{expiration_time}", x_edit_key]
-    )
+    result = await redis.eval(LOCK_SCRIPT, 3, f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid), str(LOCK_TIMEOUT), f"{lock_key}:{expiration_time}", x_edit_key)
     raise_for_edit_result(result)
     if result == 0:
         raise locked_exception
@@ -194,11 +190,7 @@ async def modify_locked_blob(
 ):
     new_blob = await request.body()
     current_time = int(time.time())
-    result = await redis.eval(
-        MODIFY_SCRIPT,
-        keys=[f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid)],
-        args=[x_lock_key, str(current_time), new_blob, x_edit_key]
-    )
+    result = await redis.eval(MODIFY_SCRIPT, 3, f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid), x_lock_key, str(current_time), new_blob, x_edit_key)
     raise_for_edit_result(result[0])
     if not result[0]:
         raise invalid_lock_exception
@@ -211,11 +203,7 @@ async def release_lock(
     redis: Redis = Depends(depends_redis),
     x_edit_key: str = Header(None),
 ):
-    result = await redis.eval(
-        RELEASE_LOCK_SCRIPT,
-        keys=[f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid)],
-        args=[x_edit_key]
-    )
+    result = await redis.eval(RELEASE_LOCK_SCRIPT, 3, f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid), x_edit_key)
     raise_for_edit_result(result)
     if result == 0:
         raise not_found_exception
@@ -237,11 +225,7 @@ async def new_blob(
     edit_key = PUBLIC_EDIT_KEY if x_edit_key == PUBLIC_EDIT_KEY and mode != APPEND_ONLY_MODE else str(uuid4())
     if mode == APPEND_ONLY_MODE:
         blob = frame_append(blob) if blob else b""
-    await redis.eval(
-        CREATE_SCRIPT,
-        keys=[f"blob:{uuid}", f"edit-key:{uuid}", blob_mode_name(uuid)],
-        args=[blob, edit_key, mode]
-    )
+    await redis.eval(CREATE_SCRIPT, 3, f"blob:{uuid}", f"edit-key:{uuid}", blob_mode_name(uuid), blob, edit_key, mode)
 
     response = Response(content=f"{config.server_url}/blob/{uuid}")
     if edit_key != PUBLIC_EDIT_KEY:
@@ -257,11 +241,7 @@ async def append_blob(
     redis: Redis = Depends(depends_redis),
 ):
     item = await request.body()
-    result = await redis.eval(
-        APPEND_SCRIPT,
-        keys=[f"blob:{uuid}", blob_mode_name(uuid)],
-        args=[APPEND_ONLY_MODE, frame_append(item)]
-    )
+    result = await redis.eval(APPEND_SCRIPT, 2, f"blob:{uuid}", blob_mode_name(uuid), APPEND_ONLY_MODE, frame_append(item))
     if result == -1:
         raise not_found_exception
     if result == -2:
@@ -285,11 +265,7 @@ async def put_blob(
     x_edit_key: str = Header(None),
 ):
     new_blob = await request.body()
-    result = await redis.eval(
-        PUT_SCRIPT,
-        keys=[f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid)],
-        args=[new_blob, x_edit_key]
-    )
+    result = await redis.eval(PUT_SCRIPT, 3, f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid), new_blob, x_edit_key)
     raise_for_edit_result(result)
     if result == 0:
         raise locked_exception
@@ -302,11 +278,7 @@ async def delete_blob(
     redis: Redis = Depends(depends_redis),
     x_edit_key: str = Header(None),
 ):
-    result = await redis.eval(
-        DELETE_SCRIPT,
-        keys=[f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid), blob_mode_name(uuid)],
-        args=[x_edit_key]
-    )
+    result = await redis.eval(DELETE_SCRIPT, 4, f"lock:{uuid}", f"blob:{uuid}", edit_key_name(uuid), blob_mode_name(uuid), x_edit_key)
     raise_for_edit_result(result)
     if result == 0:
         raise locked_exception

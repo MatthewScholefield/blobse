@@ -27,7 +27,7 @@ setup(
         'uvicorn-loguru-integration',
 
         'fastapi_plugins',
-        'aioredis'
+        'redis>=4.3'
     ],
     entry_points={
         'console_scripts': [

@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pytest
 
-pytest.importorskip("aioredis")
+pytest.importorskip("redis")
 pytest.importorskip("fastapi_plugins")
 
 from blobse import app
@@ -30,7 +30,9 @@ class FakeRedis:
     async def delete(self, key):
         return int(self.values.pop(key, None) is not None)
 
-    async def eval(self, script, *, keys, args):
+    async def eval(self, script, numkeys, *keys_and_args):
+        keys = list(keys_and_args[:numkeys])
+        args = list(keys_and_args[numkeys:])
         if script == app.CREATE_SCRIPT:
             self.values[keys[0]] = args[0]
             self.values[keys[1]] = args[1]
