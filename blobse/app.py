@@ -25,6 +25,7 @@ app.add_middleware(
 LOCK_TIMEOUT = 30
 PUBLIC_EDIT_KEY = "public"
 APPEND_ONLY_MODE = "append-only"
+OWNER_READABLE_APPEND_ONLY_MODE = "owner-readable-append-only"
 
 not_found_exception = HTTPException(status_code=404, detail="Blob not found")
 locked_exception = HTTPException(status_code=423, detail="Blob is locked")
@@ -275,7 +276,8 @@ async def get_blob(
     mode = await redis.get(blob_mode_name(uuid))
     if mode in (OWNER_READABLE_APPEND_ONLY_MODE, OWNER_READABLE_APPEND_ONLY_MODE.encode()):
         edit_key = await redis.get(edit_key_name(uuid))
-        if edit_key not in (x_edit_key, (x_edit_key or "").encode()):
+        provided_edit_key = x_edit_key if isinstance(x_edit_key, str) else ""
+        if edit_key not in (provided_edit_key, provided_edit_key.encode()):
             raise invalid_edit_key_exception
     return Response(content=blob)
 

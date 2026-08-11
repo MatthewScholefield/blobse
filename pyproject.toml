@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blobse"
+version = "0.1.0"
+description = "Simple small blob store over HTTP"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Matthew D. Scholefield", email = "matthew331199@gmail.com" },
+]
+keywords = ["blobse"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "uvicorn",
+    "fastapi",
+    "loguru",
+    "pydantic",
+    "loguru-logging-intercept",
+    "uvicorn-loguru-integration",
+    "fastapi_plugins",
+    "redis>=4.3",
+]
+
+[project.scripts]
+blobse = "blobse.__main__:main"
+
+[tool.setuptools]
+packages = ["blobse"]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
