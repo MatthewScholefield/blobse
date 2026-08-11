@@ -43,10 +43,11 @@ APPEND_SCRIPT = """
 if redis.call('EXISTS', KEYS[1]) == 0 then
     return -1
 end
-if redis.call('GET', KEYS[2]) ~= ARGV[1] then
+local mode = redis.call('GET', KEYS[2])
+if mode ~= ARGV[1] and mode ~= ARGV[2] then
     return -2
 end
-redis.call('APPEND', KEYS[1], ARGV[2])
+redis.call('APPEND', KEYS[1], ARGV[3])
 return 1
 """
 
@@ -225,10 +226,10 @@ async def new_blob(
     blob = await request.body()
     uuid = str(uuid4())
     mode = x_blob_mode or "regular"
-    if mode not in ("regular", APPEND_ONLY_MODE):
+    if mode not in ("regular", APPEND_ONLY_MODE, OWNER_READABLE_APPEND_ONLY_MODE):
         raise HTTPException(status_code=400, detail="Invalid blob mode")
-    edit_key = PUBLIC_EDIT_KEY if x_edit_key == PUBLIC_EDIT_KEY and mode != APPEND_ONLY_MODE else str(uuid4())
-    if mode == APPEND_ONLY_MODE:
+    edit_key = PUBLIC_EDIT_KEY if x_edit_key == PUBLIC_EDIT_KEY and mode not in (APPEND_ONLY_MODE, OWNER_READABLE_APPEND_ONLY_MODE) else str(uuid4())
+    if mode in (APPEND_ONLY_MODE, OWNER_READABLE_APPEND_ONLY_MODE):
         blob = frame_append(blob) if blob else b""
     await redis.eval(CREATE_SCRIPT, 3, f"blob:{uuid}", f"edit-key:{uuid}", blob_mode_name(uuid), blob, edit_key, mode)
 
@@ -246,7 +247,15 @@ async def append_blob(
     redis: Redis = Depends(depends_redis),
 ):
     item = await request.body()
-    result = await redis.eval(APPEND_SCRIPT, 2, f"blob:{uuid}", blob_mode_name(uuid), APPEND_ONLY_MODE, frame_append(item))
+    result = await redis.eval(
+        APPEND_SCRIPT,
+        2,
+        f"blob:{uuid}",
+        blob_mode_name(uuid),
+        APPEND_ONLY_MODE,
+        OWNER_READABLE_APPEND_ONLY_MODE,
+        frame_append(item),
+    )
     if result == -1:
         raise not_found_exception
     if result == -2:
@@ -255,10 +264,19 @@ async def append_blob(
 
 
 @app.get("/blob/{uuid}")
-async def get_blob(uuid: UUID4, redis: Redis = Depends(depends_redis)):
+async def get_blob(
+    uuid: UUID4,
+    redis: Redis = Depends(depends_redis),
+    x_edit_key: str = Header(None),
+):
     blob = await redis.get(f"blob:{uuid}")
     if blob is None:
         raise not_found_exception
+    mode = await redis.get(blob_mode_name(uuid))
+    if mode in (OWNER_READABLE_APPEND_ONLY_MODE, OWNER_READABLE_APPEND_ONLY_MODE.encode()):
+        edit_key = await redis.get(edit_key_name(uuid))
+        if edit_key not in (x_edit_key, (x_edit_key or "").encode()):
+            raise invalid_edit_key_exception
     return Response(content=blob)
 
 

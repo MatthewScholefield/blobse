@@ -52,16 +52,36 @@ https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931
 
 $ # Anyone can append an arbitrary byte string without an edit key
 $ curl -X POST https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/append \
-    -d 'item containing newlines, separators, or binary data'
+     -d 'item containing newlines, separators, or binary data'
 
 $ # The GET response is a sequence of 8-byte big-endian length-prefixed items.
 $ # The owner can still replace the blob with PUT or delete it with DELETE.
+
+$ # Create an append-only queue whose contents are readable only with its edit key
+$ curl -X POST https://blobse.us.to/blob/new \
+     -H "X-Blob-Mode: owner-readable-append-only" -d first-item -D -
+HTTP/1.1 200 OK
+X-Blob-Mode: owner-readable-append-only
+X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000
+
+$ # Anonymous writers can append, but anonymous reads are rejected
+$ curl -X POST https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931/append -d second-item
+$ curl https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 -D -
+HTTP/1.1 403 Forbidden
+
+$ # The owner supplies the same key to consume the queue
+$ curl https://blobse.us.to/blob/cfb77270-320c-4970-a759-c31a39c7b931 \
+     -H "X-Edit-Key: 550e8400-e29b-41d4-a716-446655440000"
 ```
 
 Append-only blobs use length prefixes rather than a delimiter, so no escaping is
 needed and every byte value is safe. Anonymous callers can only use `/append`;
 all existing edit, lock, replace, and delete routes still require the owner's
-`X-Edit-Key`.
+`X-Edit-Key`. The `owner-readable-append-only` mode has the same append behavior,
+but GET also requires the owner key. Keep that key secret: it authorizes reads as
+well as replacement, locking, and deletion. Missing mode metadata retains the
+legacy public-read behavior.
+
 
 
 The API provides a safe locking mechanism for modifying blobs to prevent race conditions.  

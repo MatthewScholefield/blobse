@@ -42,9 +42,9 @@ class FakeRedis:
         if script == app.APPEND_SCRIPT:
             if keys[0] not in self.values:
                 return -1
-            if self.values.get(keys[1]) != args[0]:
+            if self.values.get(keys[1]) not in args[:2]:
                 return -2
-            self.values[keys[0]] += args[1]
+            self.values[keys[0]] += args[2]
             return 1
         blob_exists = keys[1] in self.values
         edit_key = self.values.get(keys[2])
@@ -138,6 +138,19 @@ def test_append_only_blobs_frame_items_and_keep_owner_control():
     assert redis.values[f"blob:{uuid}"] == b"owner replacement"
 
 
+def test_owner_readable_append_only_blobs_require_the_owner_key_for_reads():
+    redis = FakeRedis()
+    uuid, response = create(redis, body=b"first\nitem", mode=app.OWNER_READABLE_APPEND_ONLY_MODE)
+    edit_key = response.headers["x-edit-key"]
+
+    assert_forbidden(app.get_blob(uuid, redis))
+    assert_forbidden(app.get_blob(uuid, redis, "wrong-key"))
+    run(app.append_blob(Request(b"second\x00item"), uuid, redis))
+    assert redis.values[f"blob:{uuid}"] == app.frame_append(b"first\nitem") + app.frame_append(b"second\x00item")
+    assert run(app.get_blob(uuid, redis, edit_key)).body == redis.values[f"blob:{uuid}"]
+    assert redis.values[f"blob-mode:{uuid}"] == app.OWNER_READABLE_APPEND_ONLY_MODE
+
+
 def test_append_only_endpoint_rejects_regular_blobs():
     redis = FakeRedis()
     uuid, _ = create(redis)
@@ -180,6 +193,8 @@ def test_private_missing_and_wrong_keys_are_rejected_by_every_mutable_route():
 
     assert redis.values[f"blob:{uuid}"] == b"original"
     assert redis.values[f"edit-key:{uuid}"] == edit_key
+    assert run(app.get_blob(uuid, redis)).body == b"original"
+    assert run(app.get_blob(uuid, redis, "wrong-key")).body == b"original"
 
 
 def test_public_blobs_allow_anonymous_mutable_paths():
@@ -205,6 +220,7 @@ def test_legacy_blobs_are_readable_but_denied_by_every_mutable_route():
     redis.values[f"blob:{uuid}"] = b"legacy"
 
     assert run(app.get_blob(uuid, redis)).body == b"legacy"
+    assert run(app.get_blob(uuid, redis, "wrong-key")).body == b"legacy"
     operations = [
         app.put_blob(uuid, Request(b"updated"), redis, None),
         app.lock_blob(uuid, redis, None),
