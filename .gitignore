@@ -9,3 +9,6 @@
 
 .env
 
+/env.yaml
+/.dockstride/
+.pytest_cache/

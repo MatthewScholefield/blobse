@@ -146,6 +146,98 @@ Now, to run the backend, use the `blobse` executable:
 blobse run
 ```
 
+## Dockstride containers
+
+Install Dockstride (`dks`) separately; Docker Engine and Compose 2.24+ are needed
+when running containers. `compose.ncl` and the pinned `libs/dockstride.ncl` are
+checked in; deployment tooling is not a Python application dependency.
+
+Create an ignored `env.yaml` (separate from the `.env` used by direct Python runs):
+
+```yaml
+project: blobse-dev
+```
+
+`dks config schema --json` describes the small configuration contract:
+
+- `project`: required unique lowercase project/stack name; do not reuse an
+  existing deployment's name for testing.
+- `prod`: defaults to `false`; selects Compose, debug/reload, source watch, and
+  loopback port 7330. `true` selects Swarm, disables debug/watch and published
+  ports, and requires explicit `serverUrl` and registry-qualified `image`.
+- `backend`: derived from `prod`; an incompatible explicit value is rejected.
+- `serverUrl`: public origin for generated links; local default is
+  `http://localhost:7330`. Include `http://` or `https://`.
+- `redisHost`: defaults to `redis`, creating private Redis on port 6379 with
+  `--save 60 1` persistence in `blobse-redis-volume`. Any other hostname omits
+  the bundled Redis/volume and connects to your existing server on port 6379.
+- `image`: development default `blobse-backend:local`; production requires a
+  registry tag accessible to all nodes. The Dockerfile build remains available
+  in the canonical/build render for Dockstride's build/publish workflow.
+
+Validate without starting containers:
+
+```bash
+dks render --target compose
+dks render --target swarm
+dks render --target build
+SERVER_URL=http://localhost:7330 uv run --locked pytest -q
+```
+
+`--target` converts the Docker document, not the environment policy: a Swarm
+render with `prod: false` is **not** production-safe. Validate production with
+`prod: true` and explicit production inputs before rendering Swarm/build targets.
+
+For development, `dks setup` fills missing configuration, `dks up` starts the
+services, and `dks dev` also watches source changes. These lifecycle commands
+are not required for rendering or tests. In production, supply `prod: true`,
+`serverUrl`, and `image` in `env.yaml`; configure your registry, Swarm manager,
+and reverse proxy before explicitly running `dks deploy`. The production service
+exposes 7330 only on its Docker network; proxy/TLS configuration is external.
+
+The bundled Redis is single-instance with a node-local volume constrained to
+manager nodes. With multiple managers, pin it to a specific node or use external
+Redis; moving it does not move its data. This does not adopt the parent's existing
+`machazat-redis-volume`, migrate data, or provide high availability.
+
+### Parent stack integration
+
+Import `deployment.ncl`, not this checkout's `compose.ncl`. The exported function
+returns only `services."blobse-backend"`; it does not read environment files,
+create Redis/volumes, publish ports, or configure a proxy. For example, inside a
+parent `dc.ComposeFile` (with the parent's own `dockstride.Config` metadata):
+
+```nickel
+let blobse = (import "blobse/deployment.ncl") {
+  backend = env.backend,
+  prod = env.prod,
+  serverUrl = env.blobseUrl,
+  redisHost = "redis",
+  image = env.blobseImage,
+  buildContext = "./blobse",
+} in
+blobse & {
+  services."blobse-backend" = {
+    networks = ["machazat-network"],
+    # Add the parent's Docker-native proxy labels here.
+  },
+}
+```
+
+Build/watch paths are relative to the parent project; standalone defaults use
+`.`. The parent owns the shared Redis, persistent volume, network, proxy labels,
+and any Compose `depends_on` ordering. Swarm drops build/watch/dependencies from
+runtime rendering. Keep the old parent Jsonnet/Compose definition until rendered
+configuration and an explicitly authorized runtime/data cutover are verified;
+this checkout does not modify it.
+
+No deployment secrets are needed or declared. Do not put credentials in
+`env.yaml`, `.env`, or checked-in definitions. If authentication is added later,
+use Dockstride file-backed secret references and application-supported file
+inputs; `_FILE` is not automatic Docker behavior. Local environment files,
+Dockstride state, virtual environments and Git metadata are excluded from the
+Docker build context.
+
 ## Production
 
 You can set up production-related aspects using `nginx`. Here is a conservative site
